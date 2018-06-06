@@ -16,6 +16,12 @@ import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.widget.Toast;
 
+import com.android.volley.Request;
+import com.android.volley.RequestQueue;
+import com.android.volley.Response;
+import com.android.volley.VolleyError;
+import com.android.volley.toolbox.StringRequest;
+import com.android.volley.toolbox.Volley;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.LocationSource;
@@ -53,10 +59,14 @@ public class MapsActivity extends AppCompatActivity implements LocationSource, O
     private LocationManager mLocationManager;
     private static long UPDATE_INTERVAL_IN_MILLISECONDS;
 
+    private ArrayList<Farmacia> farmaciasDeTurno;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_maps);
+        farmaciasDeTurno = new ArrayList<>();
+        serviceFarmacias();
         /** mLocationManager gestiona las peticiones de posicion **/
         mLocationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 
@@ -238,6 +248,86 @@ public class MapsActivity extends AppCompatActivity implements LocationSource, O
     public boolean onMarkerClick(Marker marker) {
         Log.d("click", "click en marker");
         return false;
+    }
+
+    private void generateToast(String msg){
+        Toast.makeText(getApplicationContext(),msg, Toast.LENGTH_SHORT).show();
+    }
+
+    private void serviceFarmacias(){
+        Log.d("LOG WS", "entre");
+        String WS_URL = "http://farmanet.minsal.cl/index.php/ws/getLocalesTurnos";
+        RequestQueue requestQueue = Volley.newRequestQueue(getApplicationContext());
+        StringRequest request = new StringRequest(
+                Request.Method.GET,
+                WS_URL,
+                new Response.Listener<String>(){
+                    @Override
+                    public void onResponse(String response) {
+                        try {
+                            JSONArray responseJson = new JSONArray(response);
+
+                            for(int i = 0; i < responseJson.length(); i++){
+                                JSONObject o = responseJson.getJSONObject(i);
+                                Farmacia far = new Farmacia();
+
+                                far.setFecha(o.getString("fecha"));
+                                far.setLocal_id(o.getString("local_id"));
+                                far.setRegion_id(o.getString("fk_region"));
+                                far.setComuna_id(o.getString("fk_comuna"));
+                                far.setLocalidad_id(o.getString("fk_localidad"));
+                                far.setNombre_farmacia(o.getString("local_nombre"));
+                                far.setNombre_comuna(o.getString("comuna_nombre"));
+                                far.setDireccion_farmacia(o.getString("local_direccion"));
+                                far.setHorario_apertura(o.getString("funcionamiento_hora_apertura"));
+                                far.setHorario_cierre(o.getString("funcionamiento_hora_cierre"));
+                                far.setTelefono(o.getString("local_telefono"));
+                                String lat = o.getString("local_lat");
+                                String lng = o.getString("local_lng");
+
+                                try{
+                                    far.setLatitud(Double.parseDouble(lat));
+                                    far.setLongitud(Double.parseDouble(lng));
+                                }catch (NumberFormatException e){
+                                    far.setLatitud(0);
+                                    far.setLongitud(0);
+                                }
+
+                                farmaciasDeTurno.add(far);
+
+                            }
+
+                            Log.d("LOG", "cantidad: " + farmaciasDeTurno.size());
+
+                        } catch (JSONException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }, new Response.ErrorListener() {
+            @Override
+            public void onErrorResponse(VolleyError error) {
+                Log.d("LOG WS", error.toString());
+                generateToast("Error en el WEB Service");
+            }
+        }
+        );
+        requestQueue.add(request);
+    }
+
+    private double distancia(double lat1, double lng1, double lat2, double lng2){
+        double R = 6378.137;
+        double dLat  = rad( lat2 - lat1 );
+        double dLong = rad( lng2 - lng1 );
+
+        double a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLong/2) * Math.sin(dLong/2);
+        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        double d = R * c;
+
+        return d;
+    }
+
+    private double rad(double data){
+        return data * Math.PI/180;
     }
 
     /** evento que se activa al realizar click sobre la información desplegada por un marcador **/
